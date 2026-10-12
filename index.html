@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Idle Tycoon Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: game board (clicker left, shop right) over a "save file" inspector strip that shows localStorage live */
+:root{
+  --bg:#eef3f8; --surface:#ffffff; --ink:#14233a; --muted:#5a6b82; --line:#d4dde8;
+  --coin:#f2a71b; --coin-deep:#b8740a; --accent:#1f6feb; --good:#1a8a4a; --bad:#c23b3b;
+  --code-bg:#f5f8fc;
+  --display:"Lilita One","Arial Rounded MT Bold",system-ui,sans-serif;
+  --body:"Nunito",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1724; --surface:#17223a; --ink:#e8eef7; --muted:#9fb0c7; --line:#2a3956;
+  --coin:#f5b53a; --coin-deep:#d18e18; --accent:#5b9bff; --good:#3ccf7a; --bad:#ff7070; --code-bg:#121b2e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1724; --surface:#17223a; --ink:#e8eef7; --muted:#9fb0c7; --line:#2a3956;
+  --coin:#f5b53a; --coin-deep:#d18e18; --accent:#5b9bff; --good:#3ccf7a; --bad:#ff7070; --code-bg:#121b2e; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:16px;padding-block:24px 40px;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px}
+h1{font-family:var(--display);font-weight:400;font-size:2.1rem;margin:0;letter-spacing:.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:0;max-width:60ch}
+.board{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:20px}
+@media (max-width:760px){.board{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;min-width:0}
+.label{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px}
+.clicker{display:grid;justify-items:center;gap:14px;text-align:center}
+.coins{font-family:var(--display);font-size:clamp(2.4rem,7vw,3.4rem);line-height:1;font-variant-numeric:tabular-nums}
+.income{color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.coin-btn{width:180px;height:180px;max-width:100%;border-radius:50%;border:0;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%, #ffe08a 0 18%, var(--coin) 45%, var(--coin-deep) 100%);
+  box-shadow:inset 0 -10px 0 rgba(0,0,0,.18), 0 8px 0 var(--coin-deep);
+  font-family:var(--display);font-size:2.4rem;color:#5a3a00;transition:transform .06s}
+.coin-btn:active{transform:translateY(6px);box-shadow:inset 0 -10px 0 rgba(0,0,0,.18), 0 2px 0 var(--coin-deep)}
+.coin-btn:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.stats{display:flex;gap:18px;color:var(--muted);font-size:.9rem;font-variant-numeric:tabular-nums}
+.shop{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.shop button{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center;text-align:left;
+  background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--ink);font:inherit;cursor:pointer}
+.shop button:hover:not(.poor){border-color:var(--accent)}
+.shop .name{font-weight:800;font-size:1.02rem}
+.shop .meta{color:var(--muted);font-size:.86rem;grid-column:1}
+.shop .cost{grid-row:1/3;grid-column:2;font-family:var(--display);font-size:1.25rem;color:var(--coin-deep);font-variant-numeric:tabular-nums}
+.shop .poor{opacity:.55;cursor:not-allowed}
+.shop .owned{display:inline-block;min-width:2ch;padding:0 7px;margin-left:6px;border-radius:99px;background:var(--line);font-size:.8rem;font-weight:800}
+.save{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px}
+@media (max-width:760px){.save{grid-template-columns:minmax(0,1fr)}}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:.84rem}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--body);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+td.val{word-break:break-all}
+td.empty{color:var(--muted);font-family:var(--body);font-style:italic}
+.flash{animation:flash .6s ease-out}
+@keyframes flash{from{background:color-mix(in srgb,var(--good) 25%,transparent)}to{background:transparent}}
+.controls{display:grid;gap:12px;align-content:start}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.toggle{display:flex;align-items:center;gap:10px;font-weight:700;cursor:pointer}
+.toggle input{width:20px;height:20px;accent-color:var(--good)}
+.btn{font:inherit;font-weight:800;border-radius:9px;padding:9px 14px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.danger.solid{background:var(--bad);color:#fff}
+.hint{color:var(--muted);font-size:.88rem;margin:0}
+.status{font-weight:700;font-size:.9rem}
+.status.on{color:var(--good)} .status.off{color:var(--bad)}
+.warn{margin:0;padding:12px 14px;border:1px solid var(--bad);border-radius:10px;color:var(--bad);font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;max-width:calc(100% - 32px);text-align:center}
+@media (prefers-reduced-motion:reduce){.coin-btn,.flash{transition:none;animation:none}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Idle Tycoon</h1>
+    <p class="sub">Click to earn coins, buy upgrades, then refresh the page. That's the Kill Test: everything comes back because it's saved in localStorage.</p>
+  </header>
+
+  <p class="warn" id="storageWarn" hidden>Saving is blocked on this page, so your progress will reset when you leave. Open the game in its own tab to save.</p>
+  <section class="board">
+    <div class="panel clicker">
+      <p class="label">Your coins</p>
+      <div class="coins" id="lblCoins">0</div>
+      <div class="income" id="lblIncome">+0 coins / sec</div>
+      <button class="coin-btn" id="btnClick" aria-label="Click for a coin">+1</button>
+      <div class="stats"><span id="lblClicks">0 clicks</span><span id="lblLoaded"></span></div>
+    </div>
+    <div class="panel">
+      <p class="label">Upgrade shop</p>
+      <ul class="shop" id="lvShop"></ul>
+    </div>
+  </section>
+
+  <section class="panel save">
+    <div>
+      <p class="label">Save file (localStorage, live)</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Tag</th><th>Value (saved as text)</th></tr></thead>
+          <tbody id="saveTable"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="controls">
+      <p class="label">Teacher controls</p>
+      <label class="toggle"><input type="checkbox" id="chkSave" checked> Saving on</label>
+      <p class="status on" id="lblSaveStatus">Every click, purchase, and tick is saved.</p>
+      <p class="hint">Turn saving off, earn some coins, and refresh. The game forgets everything after the last save, just like the Goldfish app.</p>
+      <div class="row" id="resetRow">
+        <button class="btn danger" id="btnReset">Reset game</button>
+      </div>
+      <div class="row" id="confirmRow" hidden>
+        <span class="hint">Erase all progress?</span>
+        <button class="btn danger solid" id="btnConfirm">Erase</button>
+        <button class="btn" id="btnCancel">Cancel</button>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+// ----- Model layer: parallel lists -----
+const upgradeNames     = ["Auto-Clicker", "Miner", "Factory", "Rocket"];
+const upgradeBaseCosts = [15, 100, 500, 2000];
+const upgradeIncome    = [1, 5, 20, 100];
+let upgradeOwned       = [0, 0, 0, 0];
+let coins = 0;
+let totalClicks = 0;
+let savingOn = true;
+
+const $ = id => document.getElementById(id);
+const lblCoins = $("lblCoins"), lblIncome = $("lblIncome"), lvShop = $("lvShop");
+
+// ----- Safe wrappers (storage can be blocked in private windows) -----
+function store(tag, value){ try{ localStorage.setItem(tag, value); }catch(e){} }
+function fetchTag(tag){ try{ return localStorage.getItem(tag); }catch(e){ return null; } }
+
+// ----- Calculated, never saved -----
+function getCost(index){
+  return Math.round(upgradeBaseCosts[index] * 1.15 ** upgradeOwned[index]);
+}
+function calcIncome(){
+  let total = 0;
+  for (let index = 0; index < upgradeNames.length; index++){
+    total = total + upgradeIncome[index] * upgradeOwned[index];
+  }
+  return total;
+}
+
+// ----- View layer -----
+const fmt = n => Math.floor(n).toLocaleString();
+function updateDisplay(){
+  lblCoins.textContent = fmt(coins);
+  lblIncome.textContent = "+" + fmt(calcIncome()) + " coins / sec";
+  $("lblClicks").textContent = fmt(totalClicks) + " clicks";
+  updateAffordable();
+}
+function buildShop(){
+  lvShop.innerHTML = "";
+  for (let index = 0; index < upgradeNames.length; index++){
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = '<span class="name">' + upgradeNames[index] + '<span class="owned">' + upgradeOwned[index] + '</span></span>' +
+      '<span class="cost">' + fmt(getCost(index)) + '</span>' +
+      '<span class="meta">+' + upgradeIncome[index] + ' coins / sec each</span>';
+    b.addEventListener("click", () => buyUpgrade(index));
+    li.appendChild(b);
+    lvShop.appendChild(li);
+  }
+  updateAffordable();
+}
+function updateAffordable(){
+  const buttons = lvShop.querySelectorAll("button");
+  buttons.forEach((b, i) => b.classList.toggle("poor", coins < getCost(i)));
+}
+
+// ----- Save file inspector -----
+const TAGS = ["coins", "upgradeOwned", "totalClicks", "lastSaveTime"];
+let lastShown = {};
+function renderSaveTable(){
+  const rows = TAGS.map(tag => {
+    const v = fetchTag(tag);
+    const changed = lastShown[tag] !== undefined && lastShown[tag] !== v && tag !== "lastSaveTime";
+    lastShown[tag] = v;
+    const cls = changed ? ' class="flash"' : "";
+    const cell = v === null ? '<td class="empty">nothing saved (null)</td>' : '<td class="val">"' + v + '"</td>';
+    return "<tr" + cls + "><td>" + tag + "</td>" + cell + "</tr>";
+  });
+  $("saveTable").innerHTML = rows.join("");
+}
+
+// ----- Persistence -----
+function saveGame(){
+  if (!savingOn) return;
+  store("coins", Math.floor(coins));
+  store("upgradeOwned", JSON.stringify(upgradeOwned));
+  store("totalClicks", totalClicks);
+  store("lastSaveTime", Date.now());
+  renderSaveTable();
+}
+function loadGame(){
+  coins = Number(fetchTag("coins")) || 0;
+  totalClicks = Number(fetchTag("totalClicks")) || 0;
+  const savedOwned = fetchTag("upgradeOwned");
+  if (savedOwned === null){
+    upgradeOwned = [0, 0, 0, 0];
+  } else {
+    try { upgradeOwned = JSON.parse(savedOwned); } catch(e){ upgradeOwned = [0, 0, 0, 0]; }
+  }
+  // The Update Bug fix: pad old save files
+  while (upgradeOwned.length < upgradeNames.length){ upgradeOwned.push(0); }
+
+  // Offline earnings, capped at 8 hours
+  const lastSaveTime = Number(fetchTag("lastSaveTime")) || Date.now();
+  const secondsAway = Math.min(Math.floor((Date.now() - lastSaveTime) / 1000), 8 * 60 * 60);
+  const earned = secondsAway * calcIncome();
+  if (earned > 0){
+    coins = coins + earned;
+    toast("Welcome back! You earned " + fmt(earned) + " coins in " + fmt(secondsAway) + " seconds away.");
+  } else if (savedOwned !== null || coins > 0){
+    toast("Save file loaded.");
+  }
+}
+
+// ----- Events -----
+$("btnClick").addEventListener("click", () => {
+  coins = coins + 1;
+  totalClicks = totalClicks + 1;
+  updateDisplay();
+  saveGame();
+});
+function buyUpgrade(index){
+  const cost = getCost(index);
+  if (coins >= cost){
+    coins = coins - cost;
+    upgradeOwned[index] = upgradeOwned[index] + 1;
+    saveGame();
+    updateDisplay();
+    buildShop();
+  } else {
+    toast("Not enough coins! You need " + fmt(cost - coins) + " more.");
+  }
+}
+setInterval(() => {
+  coins = coins + calcIncome();
+  updateDisplay();
+  saveGame();
+}, 1000);
+
+$("chkSave").addEventListener("change", e => {
+  savingOn = e.target.checked;
+  const s = $("lblSaveStatus");
+  s.className = "status " + (savingOn ? "on" : "off");
+  s.textContent = savingOn ? "Every click, purchase, and tick is saved." : "Saving is off. Refresh now and see what's lost.";
+  if (savingOn) saveGame();
+});
+$("btnReset").addEventListener("click", () => { $("resetRow").hidden = true; $("confirmRow").hidden = false; });
+$("btnCancel").addEventListener("click", () => { $("resetRow").hidden = false; $("confirmRow").hidden = true; });
+$("btnConfirm").addEventListener("click", () => {
+  try { TAGS.forEach(t => localStorage.removeItem(t)); } catch(e){}
+  coins = 0; totalClicks = 0; upgradeOwned = [0, 0, 0, 0];
+  updateDisplay(); buildShop(); renderSaveTable();
+  $("resetRow").hidden = false; $("confirmRow").hidden = true;
+  toast("Progress erased. This is what a brand-new player sees.");
+});
+
+let toastTimer;
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3200);
+}
+
+// ----- Check that saving works here -----
+function storageWorks(){
+  try { localStorage.setItem("__test", "1"); const ok = localStorage.getItem("__test") === "1"; localStorage.removeItem("__test"); return ok; }
+  catch(e){ return false; }
+}
+if (!storageWorks()) $("storageWarn").hidden = false;
+
+// ----- Runs when the page loads (like Screen1.Initialize) -----
+loadGame();
+updateDisplay();
+buildShop();
+renderSaveTable();
+</script>
+</body>
+</html>
